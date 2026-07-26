@@ -1,0 +1,45 @@
+{
+  "$comment": "ADR-002 D2: the machine-readable error catalog for /api/v1. Mirrors convex/lib/apiErrors.ts's API_ERROR_CODES 1:1 — convex/lib/apiErrors.test.ts enforces this file cannot drift out of sync with the source. Adding a code here is additive (minor); changing an existing code's meaning is breaking (major) under ADR-002 D4.",
+  "codes": [
+    {
+      "code": "MINOR_TRACKING_BLOCKED",
+      "description": "Tracking/analytics consent is disabled for a verified minor and cannot be granted."
+    },
+    {
+      "code": "NOTICE_NOT_PUBLISHED",
+      "description": "The referenced notice exists but is not in a published state."
+    },
+    {
+      "code": "ALREADY_CONSENTED",
+      "description": "A consent decision already exists for this (user, notice, purpose) and the request would duplicate it."
+    },
+    {
+      "code": "NOT_ASSOCIATED_WITH_ORG",
+      "description": "The authenticated principal does not belong to the organization the request targets."
+    },
+    {
+      "code": "INVALID_STATUS_TRANSITION",
+      "description": "The requested status change is not a valid transition from the resource's current status."
+    },
+    {
+      "code": "SDK_VERSION_UNSUPPORTED",
+      "description": "The calling SDK's version is below the server's configured minimum-supported floor (ADR-002 D6)."
+    },
+    {
+      "code": "NOT_FOUND",
+      "description": "The requested resource does not exist or is not visible to the authenticated principal."
+    },
+    {
+      "code": "UNAUTHORIZED",
+      "description": "The request is missing valid authentication or the credential does not grant access to this resource."
+    },
+    {
+      "code": "RATE_LIMITED",
+      "description": "The request was rejected because the caller exceeded a rate limit."
+    },
+    {
+      "code": "VALIDATION_ERROR",
+      "description": "The request failed validation and no more specific code applies; the human-readable error message has details."
+    }
+  ]
+}

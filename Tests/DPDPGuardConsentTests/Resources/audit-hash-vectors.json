@@ -1,0 +1,62 @@
+{
+	"_description": "Golden vectors for convex/lib/auditHash.ts (ADR-002 D5). HMAC-SHA256 per DPO sign-off decision (conformance/dpo-sign-off-request.md item 1) — the platform's key, not the fixed test secret used to derive these vectors, is the production key. Do not hand-edit expectedCanonical/expectedHash without re-deriving them from the spec's canonicalization rules and the same test secret documented in audit-hash-spec.md.",
+	"testSecret": "test-only-audit-hash-hmac-secret-do-not-use-in-production",
+	"vectors": [
+		{
+			"name": "simple direct grant",
+			"input": {
+				"organizationId": "org_abc123",
+				"noticeId": "notice_v1",
+				"noticeVersion": 1,
+				"purpose": "Newsletter",
+				"dataTypes": ["email"],
+				"givenAt": 1700000000000,
+				"source": "direct"
+			},
+			"expectedCanonical": "org_abc123|notice_v1|1|Newsletter|email|1700000000000|direct",
+			"expectedHash": "9b72403de808d11a55b473e268407cac809e9c63604f9a14a9d8cd3128990cdd"
+		},
+		{
+			"name": "dataTypes sorted regardless of input order",
+			"input": {
+				"organizationId": "org_abc123",
+				"noticeId": "notice_v1",
+				"noticeVersion": 1,
+				"purpose": "Marketing",
+				"dataTypes": ["phone", "email"],
+				"givenAt": 1700000001000,
+				"source": "brokered"
+			},
+			"expectedCanonical": "org_abc123|notice_v1|1|Marketing|email,phone|1700000001000|brokered",
+			"expectedHash": "d8d67169d5b11319783e1791d1f191b076d1c9c79c664a6a5ab85ae5500da3ce"
+		},
+		{
+			"name": "anonymous source, later notice version",
+			"input": {
+				"organizationId": "org_abc123",
+				"noticeId": "notice_v2",
+				"noticeVersion": 2,
+				"purpose": "Analytics",
+				"dataTypes": ["deviceId"],
+				"givenAt": 1700000002000,
+				"source": "anonymous"
+			},
+			"expectedCanonical": "org_abc123|notice_v2|2|Analytics|deviceId|1700000002000|anonymous",
+			"expectedHash": "deda978c9479971fad39d3a5b7d385bd603e5497b6a99d988ec8cc865cf72dc0"
+		},
+		{
+			"name": "null source serializes as the literal string \"null\"",
+			"input": {
+				"organizationId": "org_abc123",
+				"noticeId": "notice_v1",
+				"noticeVersion": 1,
+				"purpose": "Newsletter",
+				"dataTypes": ["email"],
+				"givenAt": 1700000003000,
+				"source": null
+			},
+			"expectedCanonical": "org_abc123|notice_v1|1|Newsletter|email|1700000003000|null",
+			"expectedHash": "687ad4b322efb6ccc620d2d3ef7b8e115f06e74725819e72dd79bf1250d802e8"
+		}
+	]
+}

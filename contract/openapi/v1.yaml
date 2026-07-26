@@ -1,0 +1,1334 @@
+openapi: 3.1.0
+info:
+  title: DPDP Guard — Consent Manager API
+  version: 1.1.0
+  description: |
+    Hand-authored, versioned contract for the HTTP surface Convex exposes at
+    `convex/http.ts`. Per ADR-002 (D1), this file is the source of truth for
+    the wire shape — it is never derived from Convex `v.*` validators. The
+    handlers in `convex/consentApi.ts` are held to this spec by the
+    contract-test gate in `convex/contract.flow.test.ts`.
+
+    **Scope note:** this covers the `/cm/v1/consent` "Consent Manager API"
+    slice (research/2026-07-08-dpdp-research.md, Idea F) plus the first
+    slice of the fuller `/api/v1` mobile/server SDK surface described in
+    docs/specs/mobile-server-sdk.md §4 (org/notice/banner-config reads,
+    the token broker, anonymous consent + linking). DSR, grievance, and
+    nomination endpoints are not yet implemented in `convex/http.ts` —
+    extend this file endpoint-by-endpoint as each one ships, keeping the
+    contract-test gate green at every step (ADR-002 D1).
+
+    **Error catalog:** `/api/v1` responses use `ApiError` (`code` + `error`),
+    the stable machine-readable catalog from ADR-002 D2
+    (`convex/lib/apiErrors.ts`). The older `/cm/v1/consent` slice still
+    returns the free-text-only `Error` shape documented below — introducing
+    a `code` there is tracked as its own follow-up (breaking/major under the
+    D4 classification table).
+  license:
+    name: UNLICENSED
+    identifier: UNLICENSED
+servers:
+  - url: https://{deployment}.convex.site
+    description: Convex HTTP Actions endpoint for a given deployment.
+    variables:
+      deployment:
+        default: your-deployment-name
+        description: The Convex deployment slug (see `npx convex dashboard`).
+security:
+  - apiKey: []
+paths:
+  /cm/v1/consent:
+    post:
+      operationId: recordConsent
+      summary: Record a new consent on behalf of a known data principal.
+      description: |
+        Requires the `dpdp_cm_api_enabled` flag; while it is off, this route
+        behaves as if it doesn't exist (404). Blocks tracking/marketing/
+        targeting purposes for verified minors when the organization has
+        `disableTrackingForMinors` set (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordConsentRequest"
+      responses:
+        "201":
+          description: Consent recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+        "400":
+          description: >
+            Missing/invalid required fields, malformed JSON body, or the
+            notice is not published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing, invalid, or revoked API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Tracking consent blocked for a verified minor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >
+            Notice not found (or belongs to a different organization), or no
+            data principal matches the given email. Also returned for every
+            request while the `dpdp_cm_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The data principal already has an active consent for this notice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /cm/v1/consent/{consentId}:
+    get:
+      operationId: getConsent
+      summary: Fetch a consent record by id.
+      parameters:
+        - $ref: "#/components/parameters/ConsentId"
+      responses:
+        "200":
+          description: The consent record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+        "400":
+          description: The consent id is not a valid identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing, invalid, or revoked API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >
+            No such consent record, or it belongs to a different
+            organization than the API key. Also returned for every request
+            while the `dpdp_cm_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: withdrawConsent
+      summary: Withdraw a consent record.
+      description: >
+        Withdrawal is deliberately as easy as giving consent: no request
+        body, one call, mirrors the DPDP requirement.
+      parameters:
+        - $ref: "#/components/parameters/ConsentId"
+      responses:
+        "200":
+          description: The now-withdrawn consent record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentRecord"
+        "400":
+          description: The consent id is not a valid identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing, invalid, or revoked API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: >
+            No such consent record, or it belongs to a different
+            organization than the API key. Also returned for every request
+            while the `dpdp_cm_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The consent is already withdrawn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/org/{slug}:
+    get:
+      operationId: getOrgBySlug
+      summary: Resolve an organization by slug (public).
+      description: >
+        Requires the `dpdp_mobile_api_enabled` flag; while it is off, this
+        route behaves as if it doesn't exist (404).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgSlug"
+      responses:
+        "200":
+          description: The organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSummary"
+        "404":
+          description: No organization matches this slug, or the flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/org/{orgId}/notices:
+    get:
+      operationId: getNoticesForOrg
+      summary: List published notices for an organization (public, multilingual).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      responses:
+        "200":
+          description: Published notices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notices]
+                properties:
+                  notices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notice"
+        "400":
+          description: orgId is not a valid identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/notices/{noticeId}:
+    get:
+      operationId: getNoticeById
+      summary: Fetch a single notice by id (public).
+      security: []
+      parameters:
+        - name: noticeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The notice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notice"
+        "404":
+          description: No such notice, or the flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/org/{orgId}/banner-config:
+    get:
+      operationId: getBannerConfig
+      summary: Resolve banner config for a web domain, native app, or org-default (public).
+      description: >
+        ADR-006 D2: pass `?domain=` for the web scope, `?appId=` for the
+        native-app scope, or neither for org-default. Response
+        `configVersion` (ADR-006 D3) is a presentation-config version,
+        distinct from `notice.version` — a cosmetic edit bumps it without
+        ever triggering re-consent.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - name: domain
+          in: query
+          schema:
+            type: string
+        - name: appId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolved banner config.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configVersion]
+                properties:
+                  bannerSettings:
+                    type: object
+                  configVersion:
+                    type: integer
+        "404":
+          description: >
+            The domain is not registered to this organization, or the flag
+            is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/auth/broker-token:
+    post:
+      operationId: brokerToken
+      summary: Mint a short-lived principal access token (ADR-004 D1/D2, golden-path auth).
+      description: >
+        Authenticated with a **service API key** (never a principal
+        credential). No refresh token is issued — the mobile app re-brokers
+        via its own backend once the returned token expires.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalId]
+              properties:
+                externalId:
+                  type: string
+                  description: The fiduciary's own stable user id, org-scoped.
+      responses:
+        "201":
+          description: Access token minted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, expiresAt, tokenType]
+                properties:
+                  accessToken:
+                    type: string
+                  expiresAt:
+                    type: integer
+                  tokenType:
+                    type: string
+                    enum: [Bearer]
+        "400":
+          description: Missing externalId or invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing or invalid service API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/link-anonymous-consent:
+    post:
+      operationId: linkAnonymousConsent
+      summary: Reconcile a guest's anonymous consent trail into the now-known principal (ADR-004 D3).
+      description: >
+        Authenticated with a brokered principal access token. Idempotent:
+        re-linking the same anonymousId never double-materializes a
+        profile-bound row.
+      security:
+        - principalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [anonymousId]
+              properties:
+                anonymousId:
+                  type: string
+      responses:
+        "200":
+          description: Reconciliation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linkedCount, needsReconsent]
+                properties:
+                  linkedCount:
+                    type: integer
+                  needsReconsent:
+                    type: array
+                    items:
+                      type: object
+                      required: [noticeId, purpose]
+                      properties:
+                        noticeId:
+                          type: string
+                        purpose:
+                          type: string
+        "400":
+          description: Missing anonymousId or invalid JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/consents/anonymous:
+    post:
+      operationId: giveConsentAnonymous
+      summary: Record consent for a not-yet-authenticated guest (ADR-004 D6).
+      description: >
+        Unauthenticated public write, keyed by a client-generated
+        `anonymousId`. Rate-limited. Accepts an `Idempotency-Key` header
+        (ADR-001) — a retried request after a network timeout returns the
+        original response instead of double-writing the consent event.
+      security: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, noticeId, purpose, dataTypes, anonymousId]
+              properties:
+                organizationId:
+                  type: string
+                noticeId:
+                  type: string
+                purpose:
+                  type: string
+                dataTypes:
+                  type: array
+                  items:
+                    type: string
+                anonymousId:
+                  type: string
+      responses:
+        "201":
+          description: Consent recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [consentId, purpose, dataTypes, givenAt]
+                properties:
+                  consentId:
+                    type: string
+                  purpose:
+                    type: string
+                  dataTypes:
+                    type: array
+                    items:
+                      type: string
+                  givenAt:
+                    type: integer
+        "400":
+          description: >
+            Missing/invalid fields, rate limited, notice not published, or
+            already consented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/dsr:
+    post:
+      operationId: createDsrRequest
+      summary: File a Data Subject Request (spec §4.2).
+      description: >
+        Authenticated with a brokered principal access token
+        (ADR-004 D1/D2), not a Convex Auth session. Requires the caller's
+        principal to belong to the organization (own org, or a prior
+        consent link — mirrors `dsr.createRequest`). Accepts an
+        `Idempotency-Key` header (ADR-001).
+      security:
+        - principalToken: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, type]
+              properties:
+                organizationId:
+                  type: string
+                type:
+                  type: string
+                  enum: [summary, processors, correction, erasure]
+                details:
+                  type: string
+      responses:
+        "201":
+          description: Request filed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DsrRequest"
+        "400":
+          description: >
+            Missing/invalid fields, invalid type, or the principal isn't
+            associated with the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      operationId: listDsrRequestsForCurrentUser
+      summary: List the caller's own DSR requests, with SLA `dueAt` (spec §4.2).
+      security:
+        - principalToken: []
+      responses:
+        "200":
+          description: The caller's own requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DsrRequest"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/grievances:
+    post:
+      operationId: createGrievance
+      summary: File a grievance (spec §4.2).
+      description: >
+        Authenticated with a brokered principal access token. Requires the
+        caller's principal to belong to the organization (own org, or a
+        prior consent link — mirrors `grievances.create`).
+      security:
+        - principalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, subject, description]
+              properties:
+                organizationId:
+                  type: string
+                subject:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Grievance filed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grievance"
+        "400":
+          description: >
+            Missing/invalid fields, or the principal isn't associated with
+            the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      operationId: listGrievancesForCurrentUser
+      summary: List the caller's own grievances, with SLA `dueAt` (spec §4.2).
+      security:
+        - principalToken: []
+      responses:
+        "200":
+          description: The caller's own grievances.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [grievances]
+                properties:
+                  grievances:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Grievance"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/nomination:
+    get:
+      operationId: getNomination
+      summary: Fetch the caller's current successor nomination, or null (spec §4.2).
+      security:
+        - principalToken: []
+      responses:
+        "200":
+          description: The active nomination, or null if none is set.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Nomination"
+                  - type: "null"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: upsertNomination
+      summary: Set or replace the caller's successor nomination (spec §4.2).
+      description: >
+        Idempotent in effect: re-calling with new details updates the same
+        active nomination row rather than creating a second one.
+      security:
+        - principalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nomineeName, nomineeContact]
+              properties:
+                nomineeName:
+                  type: string
+                nomineeContact:
+                  type: string
+      responses:
+        "200":
+          description: The upserted nomination.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Nomination"
+        "400":
+          description: Missing/invalid fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: revokeNomination
+      summary: Revoke the caller's successor nomination (spec §4.2).
+      description: >
+        Withdrawal-parity with consent: revoking is one call, same friction
+        as setting a nomination. A no-op (still 200) if none was active.
+      security:
+        - principalToken: []
+      responses:
+        "200":
+          description: Revoked (or already had none active).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked:
+                    type: boolean
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/age/verify-parent:
+    post:
+      operationId: verifyParent
+      summary: Verify parental consent via an authorized-entity opaque token (spec §4.2, §6.7).
+      description: >
+        Wraps `ageVerification.verifyParentToken` (DigiLocker/authorized-entity).
+        Only the opaque token is transmitted; no raw ID document leaves the
+        device. There is no `childUserId` parameter — the brokered
+        principal *is* the profile being verified.
+      security:
+        - principalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tokenFromProvider]
+              properties:
+                tokenFromProvider:
+                  type: string
+      responses:
+        "200":
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+        "400":
+          description: Missing/invalid token, or the provider rejected it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/dsr:
+    get:
+      operationId: staffListDsrRequests
+      summary: List an organization's DSR requests (fiduciary/DPO dashboard mobile surface).
+      description: >
+        Authenticated with "Direct Convex Auth" (ADR-004 §7 mode 3) —
+        fiduciary/DPO staff already have their own login, so this is not a
+        brokered principal token. A thin wrapper over `dsr.listByOrganization`,
+        which enforces its own authorization via `requireSameOrg`.
+      security:
+        - staffToken: []
+      parameters:
+        - name: organizationId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The organization's DSR requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing organizationId, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/dsr/statutory-basis-suggestions:
+    get:
+      operationId: staffListStatutoryBasisSuggestions
+      summary: Pre-built statutory citation suggestions for statutory denial.
+      security:
+        - staffToken: []
+      parameters:
+        - name: sector
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Suggestions (empty if the feature flag is off).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/dsr/{requestId}:
+    patch:
+      operationId: staffUpdateDsrStatus
+      summary: Update a DSR request's status (forward-only state machine).
+      security:
+        - staffToken: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, in_progress, completed, rejected]
+                responsePayload:
+                  {}
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        "400":
+          description: Invalid status transition, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/dsr/{requestId}/summary:
+    post:
+      operationId: staffGenerateDsrSummary
+      summary: Auto-generate the summary response for a "summary"-type DSR.
+      security:
+        - staffToken: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated and marked completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        "400":
+          description: Wrong request type, terminal state, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/dsr/{requestId}/statutory-denial:
+    post:
+      operationId: staffRejectDsrWithStatutoryBasis
+      summary: Deny an erasure request on a documented statutory basis.
+      description: Requires the `dpdp_dsr_statutory_denial_enabled` flag.
+      security:
+        - staffToken: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [statute, citation]
+              properties:
+                statute:
+                  type: string
+                citation:
+                  type: string
+                retentionPolicyId:
+                  type: string
+      responses:
+        "200":
+          description: Denied and recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        "400":
+          description: >
+            Missing fields, flag off, wrong request type, invalid
+            transition, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/grievances:
+    get:
+      operationId: staffListGrievances
+      summary: List an organization's grievances (fiduciary/DPO dashboard mobile surface).
+      security:
+        - staffToken: []
+      parameters:
+        - name: organizationId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The organization's grievances.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [grievances]
+                properties:
+                  grievances:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing organizationId, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_mobile_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/staff/grievances/{grievanceId}/respond:
+    post:
+      operationId: staffRespondToGrievance
+      summary: Respond to and close out a grievance.
+      security:
+        - staffToken: []
+      parameters:
+        - name: grievanceId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, response]
+              properties:
+                status:
+                  type: string
+                  enum: [in_progress, resolved]
+                response:
+                  type: string
+      responses:
+        "200":
+          description: Responded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated]
+                properties:
+                  updated:
+                    type: boolean
+        "400":
+          description: Missing/invalid fields, or the caller isn't staff at that org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  securitySchemes:
+    staffToken:
+      type: http
+      scheme: bearer
+      description: >
+        A Convex Auth JWT for a fiduciary/DPO staff login ("Direct Convex
+        Auth", ADR-004 §7 mode 3) — distinct from `principalToken`, which
+        authenticates a Data Principal via the brokered-token flow.
+    apiKey:
+      type: http
+      scheme: bearer
+      description: >
+        A per-organization Consent Manager API key minted via
+        `convex/apiKeys.ts` (`Authorization: Bearer <key>`). Only the SHA-256
+        hash is ever stored server-side; the raw key is shown once, at
+        creation time.
+    principalToken:
+      type: http
+      scheme: bearer
+      description: >
+        A short-lived Data Principal access token minted by
+        `POST /api/v1/auth/broker-token` (ADR-004 D1/D2). Never a service API
+        key; no refresh token is issued in brokered mode.
+  parameters:
+    ConsentId:
+      name: consentId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Convex document id of the `consents` row.
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Convex document id of the `organizations` row.
+    OrgSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    ApiError:
+      type: object
+      required:
+        - code
+        - error
+      properties:
+        code:
+          type: string
+          description: >
+            Stable machine-readable error code (ADR-002 D2), see
+            convex/lib/apiErrors.ts.
+        error:
+          type: string
+          description: Human-readable message.
+    OrgSummary:
+      type: object
+      required:
+        - orgId
+        - name
+        - slug
+      properties:
+        orgId:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+    Notice:
+      type: object
+      required:
+        - _id
+        - organizationId
+        - version
+        - itemized
+        - content
+        - status
+      properties:
+        _id:
+          type: string
+        organizationId:
+          type: string
+        version:
+          type: integer
+        itemized:
+          type: array
+          items:
+            type: object
+            required: [purpose, personalDataDescription]
+            properties:
+              purpose:
+                type: string
+              personalDataDescription:
+                type: string
+        content:
+          type: object
+          description: Map of language code to `{ title, body }`.
+        status:
+          type: string
+          enum: [draft, published]
+    DsrRequest:
+      type: object
+      required:
+        - requestId
+        - type
+        - status
+      properties:
+        requestId:
+          type: string
+        type:
+          type: string
+          enum: [summary, processors, correction, erasure]
+        status:
+          type: string
+          enum: [pending, in_progress, completed, rejected]
+        dueAt:
+          type: integer
+          description: SLA deadline, Unix epoch milliseconds.
+        requestDetails:
+          type: string
+    Grievance:
+      type: object
+      required:
+        - grievanceId
+        - subject
+        - description
+        - status
+        - dueAt
+      properties:
+        grievanceId:
+          type: string
+        subject:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved]
+        dueAt:
+          type: integer
+          description: SLA deadline, Unix epoch milliseconds.
+        respondedAt:
+          type: integer
+        response:
+          type: string
+    Nomination:
+      type: object
+      required:
+        - nominationId
+        - nomineeName
+        - nomineeContact
+        - status
+      properties:
+        nominationId:
+          type: string
+        nomineeName:
+          type: string
+        nomineeContact:
+          type: string
+        status:
+          type: string
+          enum: [active, revoked]
+    RecordConsentRequest:
+      type: object
+      required:
+        - email
+        - noticeId
+        - purpose
+        - dataTypes
+      properties:
+        email:
+          type: string
+          format: email
+          description: Identifies the existing `userProfiles` row to consent on behalf of.
+        noticeId:
+          type: string
+          description: Convex document id of a *published* `notices` row.
+        purpose:
+          type: string
+        dataTypes:
+          type: array
+          items:
+            type: string
+    ConsentRecord:
+      type: object
+      required:
+        - "@context"
+        - consentId
+        - purpose
+        - dataTypes
+        - givenAt
+        - withdrawnAt
+        - status
+      properties:
+        "@context":
+          type: string
+          format: uri
+          description: JSON-LD context for this consent-record representation.
+        consentId:
+          type: string
+        purpose:
+          type: string
+        dataTypes:
+          type: array
+          items:
+            type: string
+        givenAt:
+          type: integer
+          description: Unix epoch milliseconds.
+        withdrawnAt:
+          type:
+            - integer
+            - "null"
+          description: Unix epoch milliseconds, or null while still active.
+        status:
+          type: string
+          enum:
+            - active
+            - withdrawn
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: >
+            Free-text message. Not yet a stable machine-readable code — see
+            the "Known gap" note in the top-level description.
