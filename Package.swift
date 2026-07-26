@@ -9,6 +9,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "DPDPGuardConsent"),
-        .testTarget(name: "DPDPGuardConsentTests", dependencies: ["DPDPGuardConsent"])
+        .testTarget(
+            name: "DPDPGuardConsentTests",
+            dependencies: ["DPDPGuardConsent"],
+            resources: [.copy("Resources/audit-hash-vectors.json")]
+        )
     ]
 )
