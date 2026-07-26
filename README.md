@@ -47,8 +47,16 @@ swift build
 swift test
 ```
 
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every
+push to `master` and every PR: builds, tests, and fails if
+`ApiErrorCode.swift` has drifted from `error-catalog.json` without being
+regenerated.
+
 Publishing is git-tag based — Swift Package Manager resolves packages
-directly from git, there is no separate registry push:
+directly from git, there is no separate registry push. Pushing a semver tag
+(`\d+.\d+.\d+`, no `v` prefix) triggers
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml), which
+builds and tests at that tag, then cuts a GitHub Release:
 
 ```bash
 git tag 1.0.0

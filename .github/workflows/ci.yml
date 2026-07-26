@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check generated ApiErrorCode.swift matches contract/conformance/error-catalog.json
+        run: |
+          node scripts/generate-error-codes.mjs
+          git diff --exit-code -- Sources/DPDPGuardConsent/Generated/ApiErrorCode.swift || {
+            echo "::error::ApiErrorCode.swift is stale - run 'node scripts/generate-error-codes.mjs' and commit the diff."
+            exit 1
+          }
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
