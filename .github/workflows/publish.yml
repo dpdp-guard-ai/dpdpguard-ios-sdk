@@ -8,6 +8,12 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.0.0). Used as the GitHub Release tag/title when tag-push is unavailable (e.g. sandboxed environments that can't push tags)."
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -31,6 +37,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          TAG="${{ github.event.inputs.version }}"
+          TAG="${TAG:-$GITHUB_REF_NAME}"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "$TAG" \
+              --generate-notes
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes
+          fi
