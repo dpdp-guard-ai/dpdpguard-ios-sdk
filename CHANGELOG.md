@@ -5,13 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-29
 
-Major version bump pending, forced by the upstream `@dpdpguard/contract`
-1.0.0 breaking change (tightened request-body validation on several
-fields, optional `Idempotency-Key` on grievance filing). No functional
-changes needed in this SDK. Blocked on creating the `1.0.0` tag — see
-repo/CI notes.
+Major version bump forced by the upstream `@dpdpguard/contract` 1.0.0
+breaking change (tightened request-body validation on several fields,
+optional `Idempotency-Key` on grievance filing). No functional changes
+needed in this SDK — this release exists solely to satisfy ADR-002 D3/D4's
+requirement that a contract major bump forces a major bump in every
+dependent SDK. Tag/release cut via the `workflow_dispatch` fallback in
+`publish.yml` (tag `push` was unavailable in the automation environment
+that prepared this release).
 
 ## [0.1.0] - 2026-07-26
 
