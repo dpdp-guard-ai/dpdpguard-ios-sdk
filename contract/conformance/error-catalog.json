@@ -40,6 +40,50 @@
     {
       "code": "VALIDATION_ERROR",
       "description": "The request failed validation and no more specific code applies; the human-readable error message has details."
+    },
+    {
+      "code": "SCOPE_INSUFFICIENT",
+      "description": "The agent credential's granted scopes do not cover the requested tool or resource."
+    },
+    {
+      "code": "TOOL_NOT_AVAILABLE",
+      "description": "The requested MCP tool does not exist or is not exposed by the current catalog version."
+    },
+    {
+      "code": "ORG_DISABLED",
+      "description": "The organization has disabled agent access; no agent credential for it can authenticate."
+    },
+    {
+      "code": "APPROVAL_REQUIRED",
+      "description": "The proposed change was accepted into the approval inbox and requires human review before it takes effect."
+    },
+    {
+      "code": "APPROVAL_BACKLOG_FULL",
+      "description": "The organization's pending-approval inbox is at capacity and cannot accept another proposal."
+    },
+    {
+      "code": "PROPOSAL_EXPIRED",
+      "description": "The referenced proposal's TTL has elapsed and it can no longer be approved or rejected."
+    },
+    {
+      "code": "SECOND_REVIEWER_REQUIRED",
+      "description": "The proposal requires a second reviewer and the acting principal is the sole available reviewer without an acknowledgement."
+    },
+    {
+      "code": "PROPOSAL_ALREADY_REVIEWED",
+      "description": "The referenced proposal has already been approved or rejected and cannot be reviewed again."
+    },
+    {
+      "code": "DATA_VOLUME_EXCEEDED",
+      "description": "The requested read would return more data than the agent surface's per-call volume cap allows."
+    },
+    {
+      "code": "PLAN_LIMIT_REACHED",
+      "description": "The organization's subscription plan limit for this resource has been reached."
+    },
+    {
+      "code": "AGENT_WRITE_BLOCKED",
+      "description": "The agent credential attempted a write operation outside its permitted risk class."
     }
   ]
 }
