@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DPDP Guard — Consent Manager API
-  version: 2.8.0
+  version: 2.9.0
   description: |
     The versioned, hand-authored contract for DPDP Guard's HTTP API — the
     source of truth for the wire shape of every endpoint below.
@@ -991,6 +991,86 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: The `dpdp_retention_due_api_enabled` flag is off.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/consent-status:
+    get:
+      operationId: getConsentStatus
+      summary: >
+        Look up an org's per-purpose consent state by email
+        (docs/specs/ecommerce-cms-plugins.md, §4).
+      description: >
+        Read-only: a WooCommerce/Shopify plugin's only fact about a customer
+        is an email address from its own storefront — every other
+        consent-reading route requires a dpdpbot-internal consent id or a
+        brokered principal token. This resolves an email to the calling
+        organization's own current per-purpose consent grants, so a plugin
+        can gate a marketing sync in real time. `found: false` (not a 404)
+        means the identifier is not yet a customer of record for this
+        organization — distinct from "known, with no active consent", which
+        is `found: true` and an empty or all-opted-out `purposes` array.
+        Requires the `dpdp_consent_status_lookup_enabled` flag; while it is
+        off, this route behaves as if it doesn't exist (404). Write access to
+        consent stays `POST`/`DELETE /cm/v1/consent` — there is no
+        corresponding write route here (ADR-007 D3).
+      security:
+        - apiKey: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: The calling key's organization's consent status for this email.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [identifier, identifierType, found, purposes]
+                properties:
+                  identifier:
+                    type: string
+                  identifierType:
+                    type: string
+                    enum: [email]
+                  found:
+                    type: boolean
+                  purposes:
+                    type: array
+                    items:
+                      type: object
+                      required: [purposeKey, category, status]
+                      properties:
+                        purposeKey:
+                          type: string
+                        category:
+                          type: string
+                          enum: [essential, non_essential]
+                        status:
+                          type: string
+                          enum: [opt_in, opt_out]
+                        withdrawnAt:
+                          type: number
+                          description: Epoch ms this purpose was withdrawn, if any.
+        "400":
+          description: Missing `email` query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The `dpdp_consent_status_lookup_enabled` flag is off.
           content:
             application/json:
               schema:

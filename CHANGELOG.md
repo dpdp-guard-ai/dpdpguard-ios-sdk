@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-24
+
+### Changed
+
+- Re-vendored `contract/` from `@dpdpguard/contract@1.6.0` (`openapi/v1.yaml`
+  now `2.9.0`), picking up the new `GET /api/v1/consent-status` route:
+  resolves an email to the calling org's per-purpose consent grants, gated
+  behind the `dpdp_consent_status_lookup_enabled` flag. Purely additive per
+  ADR-002 D4 — no error-catalog or audit-hash changes, and no existing
+  operation or type changed shape.
+- `contract/conformance/capture-artifact-vectors.json` re-added by hand
+  after vendoring, same as in `1.1.0` — `scripts/update-contract.sh` still
+  only copies `error-catalog.json`/`audit-hash-vectors.json`/
+  `audit-hash-spec.md`.
+
+### Notes
+
+- `ApiErrorCode.swift` was not regenerated: `error-catalog.json` is
+  byte-identical to `1.1.0`'s vendored copy, confirmed via `git diff`.
+- `audit-hash-vectors.json` is also byte-identical; no DPO sign-off applies.
+- This is a **minor** bump: the new route is additive and not yet consumed
+  by any code in this SDK beyond the generated client.
+- `swift build`/`swift test` could **not** be run to verify this change in
+  the environment this release was prepared in (Windows; the Swift
+  toolchain is present, but SwiftPM's dependency checkouts fail with
+  `unable to create symlink ... Permission denied` because Developer Mode
+  isn't enabled, so `swift-openapi-generator`/`swift-argument-parser` never
+  finish checking out). CI (`.github/workflows/ci.yml`) will run the real
+  gate — build, `ApiErrorCode` drift check, and `swift test` — on the next
+  push/PR against macOS runners. This release should not be considered
+  verified until that run is green.
+
 ## [1.1.0] - 2026-08-12
 
 ### Fixed
