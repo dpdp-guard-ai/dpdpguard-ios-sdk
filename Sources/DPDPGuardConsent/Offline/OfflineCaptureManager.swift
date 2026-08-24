@@ -180,18 +180,24 @@ public final class OfflineCaptureManager: @unchecked Sendable {
     /// Deliberately never spells any nested generated enum/object type name
     /// (`channel`, `purposeGrants`' element type, `principalHandle`, or
     /// their own nested `category`/`status`/`kind` enums on
-    /// `Components.Schemas.OfflineCaptureSession`): a first attempt at this
-    /// spelled them out following `swift-openapi-generator`'s usual
-    /// `<PropertyName>Payload` convention, but CI showed the actual
-    /// generated names differ (this inline, non-`$ref` schema apparently
-    /// doesn't follow that convention here). Every value below is instead
-    /// built or assigned through `Components.Schemas.OfflineCaptureSession`'s
-    /// own memberwise initializer / stored properties, so it compiles
-    /// correctly regardless of what those nested types are actually named.
-    /// The raw string values (`"agent_app"`, `"opt_in"`, ...) and the
-    /// top-level init parameter labels are the only things that must match
-    /// `contract/openapi/v1.yaml`'s `OfflineCaptureSession` schema, and both
-    /// are copied directly from it.
+    /// `Components.Schemas.OfflineCaptureSession`) **and never spells a case
+    /// name either** - both attempts at that failed against the real
+    /// generated code in CI (the type names didn't match the
+    /// `<PropertyName>Payload` convention this was first written against,
+    /// and separately, whatever the real case names are, they aren't the
+    /// simple camelCase of the raw string this guessed). Every enum value
+    /// below is constructed with `.init(rawValue:)!` instead - force-unwrap
+    /// is safe and correct here, not a shortcut: `rawValue` always comes
+    /// from one of this file's own `CaptureChannel` / `PurposeCategory` /
+    /// `PurposeGrantStatus` / `PrincipalHandleKind` enums, whose raw values
+    /// are hardcoded to the exact same finite set `contract/openapi/v1.yaml`
+    /// defines for this schema, so the conversion cannot fail without the
+    /// contract itself having drifted (in which case a loud crash here is
+    /// correct, not a case to silently paper over with a `?? .someCase`
+    /// fallback - which is what didn't compile in the first place). The raw
+    /// string values and the top-level/nested init parameter labels are the
+    /// only things that must match the schema, and both are copied directly
+    /// from it.
     ///
     /// Construction is split into several narrow statements rather than one
     /// combined literal deliberately: an earlier version built every field -
@@ -206,30 +212,23 @@ public final class OfflineCaptureManager: @unchecked Sendable {
             noticeId: session.noticeId,
             noticeVersion: Double(session.noticeVersion),
             noticeLocale: session.noticeLocale,
-            channel: .agentApp,
+            channel: .init(rawValue: session.channel.rawValue)!,
             capturedAtClient: Double(session.capturedAtClient),
             deviceSignature: session.deviceSignatureBase64,
             dataTypes: session.dataTypes,
             purposeGrants: [],
-            principalHandle: .init(kind: .none, value: ""),
+            principalHandle: .init(kind: .init(rawValue: session.principalHandle.kind.rawValue)!, value: session.principalHandle.value),
             linkId: session.linkId
         )
-
-        payload.channel = .init(rawValue: session.channel.rawValue) ?? .agentApp
 
         payload.purposeGrants = session.purposeGrants.map { grant in
             .init(
                 purposeKey: grant.purposeKey,
                 purposeLabel: grant.purposeLabel,
-                category: .init(rawValue: grant.category.rawValue) ?? .essential,
-                status: .init(rawValue: grant.status.rawValue) ?? .optIn
+                category: .init(rawValue: grant.category.rawValue)!,
+                status: .init(rawValue: grant.status.rawValue)!
             )
         }
-
-        payload.principalHandle = .init(
-            kind: .init(rawValue: session.principalHandle.kind.rawValue) ?? .none,
-            value: session.principalHandle.value
-        )
 
         return payload
     }
