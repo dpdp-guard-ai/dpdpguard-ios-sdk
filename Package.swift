@@ -37,7 +37,8 @@ let package = Package(
             dependencies: ["DPDPGuardConsent"],
             resources: [
                 .copy("Resources/audit-hash-vectors.json"),
-                .copy("Resources/error-catalog.json")
+                .copy("Resources/error-catalog.json"),
+                .copy("Resources/capture-artifact-vectors.json")
             ]
         )
     ]

@@ -1,0 +1,217 @@
+{
+	"_description": "Golden vectors for convex/lib/captureArtifact.ts — the Cryptographic Consent Artifact canonicalization and platform countersignature (docs/specs/offline-consent-capture.md 4.2, conformance/audit-hash-spec.md). Any SDK that signs offline captures must reproduce expectedCanonical byte-for-byte, or its signatures will quarantine on sync. Device signatures are ECDSA and therefore non-deterministic, so they are not pinned here; expectedCountersignature is HMAC-SHA256 and is. Do not hand-edit — re-derive from the canonicalization rules and the same testSecret.",
+	"testSecret": "test-only-audit-hash-hmac-secret-do-not-use-in-production",
+	"vectors": [
+		{
+			"name": "agent-app capture, single essential purpose",
+			"input": {
+				"clientSessionId": "11111111-2222-3333-4444-555555555555",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pune_114",
+				"noticeId": "notice_v3",
+				"noticeVersion": 3,
+				"noticeLocale": "hi",
+				"purposeGrants": [
+					{
+						"purposeKey": "kyc_verification",
+						"status": "opt_in"
+					}
+				],
+				"dataTypes": [
+					"pan"
+				],
+				"principalHandleKind": "phone_hash",
+				"principalHandleValue": "9876543210",
+				"capturedAtClient": 1700000000000,
+				"channel": "agent_app"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:11111111-2222-3333-4444-555555555555|10:org_abc123|15:device_pune_114|9:notice_v3|1:3|2:hi|1:1|16:kyc_verification|6:opt_in|1:1|3:pan|10:phone_hash|10:9876543210|13:1700000000000|9:agent_app",
+			"expectedCountersignature": "cbee94efb219597d00b01eaf23eaef1025a5973ee3f9eee4c89e0bf2ae24e307"
+		},
+		{
+			"name": "purposes and dataTypes sorted regardless of input order",
+			"input": {
+				"clientSessionId": "11111111-2222-3333-4444-555555555555",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pune_114",
+				"noticeId": "notice_v3",
+				"noticeVersion": 3,
+				"noticeLocale": "hi",
+				"purposeGrants": [
+					{
+						"purposeKey": "marketing",
+						"status": "opt_out"
+					},
+					{
+						"purposeKey": "kyc_verification",
+						"status": "opt_in"
+					}
+				],
+				"dataTypes": [
+					"pan",
+					"aadhaar"
+				],
+				"principalHandleKind": "phone_hash",
+				"principalHandleValue": "9876543210",
+				"capturedAtClient": 1700000000000,
+				"channel": "agent_app"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:11111111-2222-3333-4444-555555555555|10:org_abc123|15:device_pune_114|9:notice_v3|1:3|2:hi|1:2|16:kyc_verification|6:opt_in|9:marketing|7:opt_out|1:2|7:aadhaar|3:pan|10:phone_hash|10:9876543210|13:1700000000000|9:agent_app",
+			"expectedCountersignature": "885beb3938746002bf58b0e53f1ec88f5e0ee2509f4df0e6cbb2d839aaf06e5e"
+		},
+		{
+			"name": "no principal handle serialises as the literal null",
+			"input": {
+				"clientSessionId": "99999999-8888-7777-6666-555555555555",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pos_7",
+				"noticeId": "notice_v1",
+				"noticeVersion": 1,
+				"noticeLocale": "en",
+				"purposeGrants": [
+					{
+						"purposeKey": "loyalty",
+						"status": "opt_in"
+					}
+				],
+				"dataTypes": [
+					"phone"
+				],
+				"principalHandleKind": "none",
+				"principalHandleValue": "",
+				"capturedAtClient": 1700000050000,
+				"channel": "pos"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:99999999-8888-7777-6666-555555555555|10:org_abc123|12:device_pos_7|9:notice_v1|1:1|2:en|1:1|7:loyalty|6:opt_in|1:1|5:phone|4:none|4:null|13:1700000050000|3:pos",
+			"expectedCountersignature": "a132dcb84d9b41a2364260f2c42c822063fd21070c0c8a176c3c727d2a18fde5"
+		},
+		{
+			"name": "ivr capture, uhid handle, all purposes declined",
+			"input": {
+				"clientSessionId": "abcdefab-1234-5678-9012-abcdefabcdef",
+				"organizationId": "org_hosp1",
+				"deviceId": "device_ivr_gw",
+				"noticeId": "notice_opd",
+				"noticeVersion": 7,
+				"noticeLocale": "mr",
+				"purposeGrants": [
+					{
+						"purposeKey": "research_sharing",
+						"status": "opt_out"
+					},
+					{
+						"purposeKey": "tpa_sharing",
+						"status": "opt_out"
+					}
+				],
+				"dataTypes": [
+					"diagnosis",
+					"uhid"
+				],
+				"principalHandleKind": "uhid",
+				"principalHandleValue": "UHID-4471",
+				"capturedAtClient": 1700000150000,
+				"channel": "ivr"
+			},
+			"syncedAtServer": 1700000200000,
+			"expectedCanonical": "9:dpdpcca/2|36:abcdefab-1234-5678-9012-abcdefabcdef|9:org_hosp1|13:device_ivr_gw|10:notice_opd|1:7|2:mr|1:2|16:research_sharing|7:opt_out|11:tpa_sharing|7:opt_out|1:2|9:diagnosis|4:uhid|4:uhid|9:UHID-4471|13:1700000150000|3:ivr",
+			"expectedCountersignature": "1d319ca2e1b7ba6b6477b5ca00da95609ad2e05e072a6a0d8fee1d8147aeb69f"
+		},
+		{
+			"name": "separator injection A — two grants, one opt_in one opt_out",
+			"_why": "Paired with vector B below. Under dpdpcca/1 these two structurally different captures produced identical canonical bytes, so one device signature attested to both. They must differ.",
+			"input": {
+				"clientSessionId": "cccccccc-1111-2222-3333-444444444444",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pune_114",
+				"noticeId": "notice_v3",
+				"noticeVersion": 3,
+				"noticeLocale": "en",
+				"purposeGrants": [
+					{
+						"purposeKey": "marketing",
+						"status": "opt_in"
+					},
+					{
+						"purposeKey": "kyc",
+						"status": "opt_out"
+					}
+				],
+				"dataTypes": [
+					"pan"
+				],
+				"principalHandleKind": "none",
+				"principalHandleValue": "",
+				"capturedAtClient": 1700000000000,
+				"channel": "agent_app"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:cccccccc-1111-2222-3333-444444444444|10:org_abc123|15:device_pune_114|9:notice_v3|1:3|2:en|1:2|3:kyc|7:opt_out|9:marketing|6:opt_in|1:1|3:pan|4:none|4:null|13:1700000000000|9:agent_app",
+			"expectedCountersignature": "c3c37678cec47cade17055159afbdc727a3d58104f3b2a0bcb170fa8a539972a"
+		},
+		{
+			"name": "separator injection B — one grant whose key embeds the v1 delimiters",
+			"_why": "Paired with vector A above.",
+			"input": {
+				"clientSessionId": "cccccccc-1111-2222-3333-444444444444",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pune_114",
+				"noticeId": "notice_v3",
+				"noticeVersion": 3,
+				"noticeLocale": "en",
+				"purposeGrants": [
+					{
+						"purposeKey": "kyc:opt_out,marketing",
+						"status": "opt_in"
+					}
+				],
+				"dataTypes": [
+					"pan"
+				],
+				"principalHandleKind": "none",
+				"principalHandleValue": "",
+				"capturedAtClient": 1700000000000,
+				"channel": "agent_app"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:cccccccc-1111-2222-3333-444444444444|10:org_abc123|15:device_pune_114|9:notice_v3|1:3|2:en|1:1|21:kyc:opt_out,marketing|6:opt_in|1:1|3:pan|4:none|4:null|13:1700000000000|9:agent_app",
+			"expectedCountersignature": "308030d79f5e253af6411bc213c69fe5c7677b2c6f1b56513a80d85f7226b12d"
+		},
+		{
+			"name": "devanagari purpose label — UTF-8 byte framing and byte-wise sort",
+			"_why": "Pins that token lengths are counted in UTF-8 bytes and the sort is byte-wise, the two points where a Kotlin or Swift SDK is most likely to drift from this implementation.",
+			"input": {
+				"clientSessionId": "dddddddd-1111-2222-3333-444444444444",
+				"organizationId": "org_abc123",
+				"deviceId": "device_pune_114",
+				"noticeId": "notice_v3",
+				"noticeVersion": 3,
+				"noticeLocale": "hi",
+				"purposeGrants": [
+					{
+						"purposeKey": "विपणन",
+						"status": "opt_out"
+					},
+					{
+						"purposeKey": "kyc",
+						"status": "opt_in"
+					}
+				],
+				"dataTypes": [
+					"पैन",
+					"pan"
+				],
+				"principalHandleKind": "uhid",
+				"principalHandleValue": "UHID-4471",
+				"capturedAtClient": 1700000000000,
+				"channel": "agent_app"
+			},
+			"syncedAtServer": 1700000100000,
+			"expectedCanonical": "9:dpdpcca/2|36:dddddddd-1111-2222-3333-444444444444|10:org_abc123|15:device_pune_114|9:notice_v3|1:3|2:hi|1:2|3:kyc|6:opt_in|15:विपणन|7:opt_out|1:2|3:pan|9:पैन|4:uhid|9:UHID-4471|13:1700000000000|9:agent_app",
+			"expectedCountersignature": "6430c0e54e92ded7021174b0487f544546296e24da95712dbdbc32deb28f8235"
+		}
+	]
+}

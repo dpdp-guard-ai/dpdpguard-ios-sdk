@@ -181,6 +181,70 @@ let hash = try computeAuditHash(input, secret: hmacSecret)
 production — `computeAuditHash` throws `AuditHashError.missingSecret` rather
 than silently falling back to an unkeyed hash if you pass an empty string.
 
+### Offline consent capture (field agent / POS)
+
+`docs/specs/offline-consent-capture.md` §4 describes the Cryptographic
+Consent Artifact: a consent captured with no connectivity, signed on-device,
+and synced losslessly once connectivity returns. `Offline/` implements the
+device-side half of that:
+
+```swift
+import DPDPGuardConsent
+import DPDPGuardConsentAPI
+
+// Once, at device-enrollment time. The public key goes to your fleet
+// console / bulkEnrolAgentDevices to create the matching `agentDevices` row.
+let identity = try AgentDeviceIdentityStore.enroll()
+print(identity.publicKeySPKIBase64)
+
+// Reload the same identity on every subsequent launch.
+let identity = try AgentDeviceIdentityStore.load()! // nil until enroll() has run once
+
+let store = try OfflineCaptureStore()
+let manager = OfflineCaptureManager(identity: identity, store: store)
+
+// After the agent shows the notice and the principal decides - purely
+// local, works with the radio off.
+let session = try manager.capture(
+    deviceId: "device_pune_114",       // the agentDevices row id from enrollment
+    organizationId: "org_abc123",
+    noticeId: "notice_v3",
+    noticeVersion: 3,
+    noticeLocale: "hi",
+    purposeGrants: [
+        PurposeGrant(purposeKey: "kyc_verification", purposeLabel: "KYC verification", category: .essential, status: .optIn)
+    ],
+    dataTypes: ["pan"],
+    principalHandle: PrincipalHandle(kind: .phoneHash, value: "9876543210"),
+    channel: .agentApp
+)
+
+// Whenever connectivity returns (foreground, background task, reachability
+// callback, ...). Batches up to 200 sessions per call and evicts every
+// session the server acknowledges, including quarantined/rejected ones.
+let outcomes = try await manager.syncPending(using: client)
+```
+
+Notes:
+
+- `AgentDeviceIdentityStore` generates the device's ECDSA P-256 keypair in
+  the Secure Enclave when one is available, falling back to a Keychain-held
+  software key otherwise (the Simulator, older devices). The private key
+  never leaves the device and this SDK never transmits it.
+- `OfflineCaptureStore` AES-256-GCM-seals each pending session with a
+  Keychain-held key before writing it to disk, in a directory excluded from
+  device/iCloud backups. A session is evicted only once its sync result has
+  been acknowledged by the server - never speculatively.
+- `CaptureArtifact.canonicalString(for:)` is the `dpdpcca/2` canonicalization
+  from `conformance/audit-hash-spec.md` - a **second**, separate proof from
+  the platform's HMAC audit hash: it proves *which enrolled device* produced
+  this exact payload. See `CaptureArtifactConformanceTests` for the golden
+  vectors this implementation is verified against.
+- Notice rendering (fetching and displaying `GET /api/v1/notices/{noticeId}`
+  in the device's locale) and the capture UI itself are the host app's
+  responsibility - this SDK does not ship a UI for offline capture, per
+  `docs/specs/offline-consent-capture.md`'s Non-Goal 5.
+
 ### Authentication
 
 The OpenAPI spec documents three bearer schemes (see

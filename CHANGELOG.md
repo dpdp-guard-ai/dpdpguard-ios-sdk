@@ -5,6 +5,75 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-24
+
+### Added
+
+- **Offline consent capture** (`Sources/DPDPGuardConsent/Offline/`),
+  implementing the device-side half of `docs/specs/offline-consent-capture.md`
+  §4 (the Cryptographic Consent Artifact) - previously the SDK exposed
+  `POST /api/v1/offline/captures` only through the raw generated client, with
+  no signing, local persistence, or facade at all (see the "Does iOS SDK
+  support offline consent management?" discussion this release closes the
+  gap on):
+  - `CaptureArtifact` - the `dpdpcca/2` canonicalization from
+    `conformance/audit-hash-spec.md`, verified byte-for-byte against
+    `conformance/capture-artifact-vectors.json` (now vendored into
+    `Tests/DPDPGuardConsentTests/Resources/` and `Package.swift`'s test
+    resources). A second, independent proof from `computeAuditHash`: this one
+    proves *which enrolled device* produced a payload, not that the platform
+    wrote it unaltered.
+  - `AgentDeviceIdentityStore` - enrolls an ECDSA P-256 signing key in the
+    Secure Enclave when available, falling back to a Keychain-held software
+    key (Simulator, non-SE hardware). Private key material never leaves the
+    device and this SDK never transmits it; only the SPKI DER public key
+    (`AgentDeviceIdentity.publicKeySPKIBase64`) is meant to leave, via the
+    fleet-enrollment console flow.
+  - `OfflineCaptureStore` - the encrypted local store §4.1 calls for: each
+    pending `OfflineCaptureSession` is AES-256-GCM-sealed with a
+    Keychain-held key and written one-file-per-session to a directory marked
+    excluded from device/iCloud backups. Evicts a session only once its sync
+    has been acknowledged by the server.
+  - `OfflineCaptureManager` - the facade: `capture(...)` builds, signs, and
+    persists a session with no network I/O (works at zero bars, per Goal 2);
+    `syncPending(using:)` batches ≤200 pending sessions to
+    `POST /api/v1/offline/captures` and evicts every session the server
+    acknowledges (verified, quarantined, or rejected - all three are
+    terminal server-side acknowledgements per §4.4's "partial batch success
+    is normal").
+
+### Notes
+
+- Chosen storage approach: Keychain + AES-GCM-encrypted plain files, not
+  SQLCipher (which §4.1 mentions as one option) or a new SQL dependency -
+  no new package dependency, and the per-agent pending-session volume this
+  is sized for (a queue awaiting the next sync, not a long-lived database)
+  doesn't need a queryable store.
+- `OfflineCaptureManager.syncPending`'s request-building code
+  (`Offline/OfflineCaptureManager.swift`'s `requestPayload`) references the
+  generated `Components.Schemas.OfflineCaptureSession` type but deliberately
+  avoids spelling any of its nested generated enum type names (relying on
+  contextual type inference instead) precisely because those names - unlike
+  the `$ref`'d component schema names themselves - could not be confirmed
+  against a real `swift build` in the environment this was written in
+  (Windows, no Developer Mode enabled; same limitation noted in `1.1.0` and
+  `1.2.0`). If CI still finds a mismatch, this is the one function that
+  needs adjusting.
+- `capture`/`syncPending` do not implement retry/backoff, notice-version
+  staleness blocking, or clock-skew handling on the client side - those are
+  server-verified at sync time (§4.3, §4.4) and out of scope for this pass.
+  Notice bundle pre-caching (§4.1) is also not implemented - it is public,
+  non-PII content the host app can fetch directly via
+  `GET /api/v1/notices/{noticeId}` and is not part of "the encrypted local
+  store holds ... pending `offlineCaptureSessions`, and nothing else."
+- `swift build`/`swift test` could **not** be run to verify this change in
+  the environment this release was prepared in - same Windows/Developer
+  Mode limitation as `1.2.0`. New syntax was checked with `swiftc -parse`
+  only (no type-checking, since that requires the generated
+  `DPDPGuardConsentAPI` target this code depends on). CI
+  (`.github/workflows/ci.yml`) is the real gate for this release; do not
+  consider it verified until that run is green.
+
 ## [1.2.0] - 2026-08-24
 
 ### Changed
