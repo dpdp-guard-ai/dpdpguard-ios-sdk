@@ -165,47 +165,67 @@ public final class OfflineCaptureManager: @unchecked Sendable {
             return outcomes
         case .undocumented(let statusCode, _):
             throw OfflineCaptureManagerError.unexpectedStatus(statusCode)
+        default:
+            // badRequest / unauthorized / notFound / tooManyRequests: all
+            // documented failure responses for the whole batch (malformed
+            // body, bad/revoked API key, flag off, rate limit) - none is
+            // per-session, so there is nothing to partially apply.
+            throw OfflineCaptureManagerError.requestRejected
         }
     }
 
     // MARK: - Private
 
     /// Maps a locally-persisted session to the generated request schema.
-    /// Deliberately never spells the nested generated enum type names
-    /// (`channel`, `category`, `status`, `kind` on
-    /// `Components.Schemas.OfflineCaptureSession`) - `.init(rawValue:)` and
-    /// each case are resolved by contextual type inference from the
-    /// memberwise initializer instead, so this compiles correctly regardless
-    /// of exactly what `swift-openapi-generator` names those nested types.
-    /// The raw string values (`"agent_app"`, `"opt_in"`, ...) and the
-    /// top-level init parameter labels are the only things that must match
-    /// `contract/openapi/v1.yaml`'s `OfflineCaptureSession` schema, and both
-    /// are copied directly from it. This could not be confirmed against a
-    /// real `swift build` in the environment this was written in (Windows,
-    /// no Developer Mode enabled - see CHANGELOG); CI is the real gate.
+    ///
+    /// The nested enum/object type names spelled out below
+    /// (`ChannelPayload`, `PurposeGrantsPayloadPayload`,
+    /// `PrincipalHandlePayload`, and their own nested `CategoryPayload` /
+    /// `StatusPayload` / `KindPayload`) follow `swift-openapi-generator`'s
+    /// documented synthesized-name convention for inline (non-`$ref`)
+    /// schemas: `<PropertyName>Payload` for a scalar/object property, with
+    /// an extra `Payload` suffix for the item type of an array property.
+    /// This could **not** be confirmed against a real `swift build` in the
+    /// environment this was written in (Windows, no Developer Mode enabled -
+    /// see CHANGELOG); if CI reports a different spelling, this is the one
+    /// function that needs adjusting - nothing else in `Offline/` depends on
+    /// generated types.
+    ///
+    /// Field construction is split into several narrow statements rather
+    /// than one combined literal deliberately: an earlier version built
+    /// every field - including two levels of nested `.init`/`??`/`.map` - as
+    /// a single expression, and CI's type checker timed out on it ("unable
+    /// to type-check this expression in reasonable time").
     private static func requestPayload(for session: OfflineCaptureSession) -> Components.Schemas.OfflineCaptureSession {
-        .init(
+        let channel = Components.Schemas.OfflineCaptureSession.ChannelPayload(rawValue: session.channel.rawValue) ?? .agentApp
+
+        let purposeGrants: [Components.Schemas.OfflineCaptureSession.PurposeGrantsPayloadPayload] = session.purposeGrants.map { grant in
+            let category = Components.Schemas.OfflineCaptureSession.PurposeGrantsPayloadPayload
+                .CategoryPayload(rawValue: grant.category.rawValue) ?? .essential
+            let status = Components.Schemas.OfflineCaptureSession.PurposeGrantsPayloadPayload
+                .StatusPayload(rawValue: grant.status.rawValue) ?? .optIn
+            return .init(purposeKey: grant.purposeKey, purposeLabel: grant.purposeLabel, category: category, status: status)
+        }
+
+        let principalHandleKind = Components.Schemas.OfflineCaptureSession.PrincipalHandlePayload
+            .KindPayload(rawValue: session.principalHandle.kind.rawValue) ?? .none
+        let principalHandle = Components.Schemas.OfflineCaptureSession.PrincipalHandlePayload(
+            kind: principalHandleKind,
+            value: session.principalHandle.value
+        )
+
+        return Components.Schemas.OfflineCaptureSession(
             clientSessionId: session.clientSessionId.uuidString.lowercased(),
             deviceId: session.deviceId,
             noticeId: session.noticeId,
             noticeVersion: Double(session.noticeVersion),
             noticeLocale: session.noticeLocale,
-            channel: .init(rawValue: session.channel.rawValue) ?? .agentApp,
+            channel: channel,
             capturedAtClient: Double(session.capturedAtClient),
             deviceSignature: session.deviceSignatureBase64,
             dataTypes: session.dataTypes,
-            purposeGrants: session.purposeGrants.map { grant in
-                .init(
-                    purposeKey: grant.purposeKey,
-                    purposeLabel: grant.purposeLabel,
-                    category: .init(rawValue: grant.category.rawValue) ?? .essential,
-                    status: .init(rawValue: grant.status.rawValue) ?? .optIn
-                )
-            },
-            principalHandle: .init(
-                kind: .init(rawValue: session.principalHandle.kind.rawValue) ?? .none,
-                value: session.principalHandle.value
-            ),
+            purposeGrants: purposeGrants,
+            principalHandle: principalHandle,
             linkId: session.linkId
         )
     }
@@ -213,4 +233,9 @@ public final class OfflineCaptureManager: @unchecked Sendable {
 
 public enum OfflineCaptureManagerError: Error, Equatable {
     case unexpectedStatus(Int)
+    /// One of `syncOfflineCaptures`'s documented non-`200` responses
+    /// (`badRequest` / `unauthorized` / `notFound` / `tooManyRequests`) -
+    /// applies to the whole batch, so there are no per-session outcomes to
+    /// report for it.
+    case requestRejected
 }

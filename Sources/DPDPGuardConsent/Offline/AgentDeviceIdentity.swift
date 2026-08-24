@@ -58,7 +58,10 @@ public struct AgentDeviceIdentity: Sendable {
 /// `AgentDeviceIdentity`. One identity per `keychainTag` - typically one per
 /// app install, matching one `agentDevices` row.
 public enum AgentDeviceIdentityStore {
-    private static let defaultService = "ai.dpdpguard.consent.offline.deviceIdentity"
+    /// A `public` default (not `private`) because a default-argument
+    /// expression on a `public` function must be at least as visible as the
+    /// function itself.
+    public static let defaultService = "ai.dpdpguard.consent.offline.deviceIdentity"
 
     /// Generates a new signing key (Secure Enclave when available, software
     /// key otherwise), persists it to the Keychain under `tag`, and returns
