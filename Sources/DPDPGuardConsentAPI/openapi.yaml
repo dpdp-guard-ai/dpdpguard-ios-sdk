@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DPDP Guard — Consent Manager API
-  version: 2.9.0
+  version: 2.23.1
   description: |
     The versioned, hand-authored contract for DPDP Guard's HTTP API — the
     source of truth for the wire shape of every endpoint below.
@@ -47,8 +47,7 @@ paths:
       operationId: recordConsent
       summary: Record a new consent on behalf of a known data principal.
       description: |
-        Requires the `dpdp_cm_api_enabled` flag; while it is off, this route
-        behaves as if it doesn't exist (404). Blocks tracking/marketing/
+        Blocks tracking/marketing/
         targeting purposes for verified minors when the organization has
         `disableTrackingForMinors` set (403).
       requestBody:
@@ -87,8 +86,7 @@ paths:
         "404":
           description: >
             Notice not found (or belongs to a different organization), or no
-            data principal matches the given email. Also returned for every
-            request while the `dpdp_cm_api_enabled` flag is off.
+            data principal matches the given email.
           content:
             application/json:
               schema:
@@ -127,8 +125,7 @@ paths:
         "404":
           description: >
             No such consent record, or it belongs to a different
-            organization than the API key. Also returned for every request
-            while the `dpdp_cm_api_enabled` flag is off.
+            organization than the API key.
           content:
             application/json:
               schema:
@@ -163,8 +160,7 @@ paths:
         "404":
           description: >
             No such consent record, or it belongs to a different
-            organization than the API key. Also returned for every request
-            while the `dpdp_cm_api_enabled` flag is off.
+            organization than the API key.
           content:
             application/json:
               schema:
@@ -179,9 +175,6 @@ paths:
     get:
       operationId: getOrgBySlug
       summary: Resolve an organization by slug (public).
-      description: >
-        Requires the `dpdp_mobile_api_enabled` flag; while it is off, this
-        route behaves as if it doesn't exist (404).
       security: []
       parameters:
         - $ref: "#/components/parameters/OrgSlug"
@@ -193,7 +186,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrgSummary"
         "404":
-          description: No organization matches this slug, or the flag is off.
+          description: No organization matches this slug.
           content:
             application/json:
               schema:
@@ -243,7 +236,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Notice"
         "404":
-          description: No such notice, or the flag is off.
+          description: No such notice.
           content:
             application/json:
               schema:
@@ -283,8 +276,7 @@ paths:
                     type: integer
         "404":
           description: >
-            The domain is not registered to this organization, or the flag
-            is off.
+            The domain is not registered to this organization.
           content:
             application/json:
               schema:
@@ -296,8 +288,7 @@ paths:
         Resolve org, notice, and banner styling for the no-React embeddable
         widget script in one round trip (public).
       description: >
-        Requires the `dpdp_mobile_api_enabled` flag; while it is off, this
-        route behaves as if it doesn't exist (404). Powers the no-React
+        Powers the no-React
         embeddable widget script's single config call: given the
         domain-group id its script tag was generated with (`?id=`) and the
         embedding page's hostname (`?domain=`), resolves the organization,
@@ -336,8 +327,7 @@ paths:
         "404":
           description: >
             No matching domain group, the domain isn't registered to that
-            group's organization, no notice resolves, or the
-            `dpdp_mobile_api_enabled` flag is off.
+            group's organization, or no notice resolves.
           content:
             application/json:
               schema:
@@ -391,12 +381,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/cm/signal:
     post:
       operationId: receiveCmSignal
@@ -404,8 +388,7 @@ paths:
         Government CM API Bridge — receive an inbound consent signal from a
         registered third-party Consent Manager.
       description: >
-        Requires the `dpdp_cm_inbound_signals_enabled` flag; while it is
-        off, this route behaves as if it doesn't exist (404). Authenticated
+        Authenticated
         with the same org-scoped API key as `/cm/v1/consent` (never a
         brokered principal token) — the reverse direction of that flow:
         here a third-party Consent Manager pushes a signal on behalf of one
@@ -475,12 +458,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "404":
-          description: The `dpdp_cm_inbound_signals_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /api/v1/link-anonymous-consent:
     post:
       operationId: linkAnonymousConsent
@@ -516,12 +493,16 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [noticeId, purpose]
+                      required: [noticeId, purpose, dataTypes]
                       properties:
                         noticeId:
                           type: string
                         purpose:
                           type: string
+                        dataTypes:
+                          type: array
+                          items:
+                            type: string
         "400":
           description: Missing anonymousId or invalid JSON body.
           content:
@@ -573,6 +554,23 @@ paths:
                 anonymousId:
                   type: string
                   minLength: 1
+                noticeLocale:
+                  type: string
+                  maxLength: 16
+                  description: Locale of the notice text the visitor read.
+                noticeHash:
+                  type: string
+                  pattern: "^[0-9a-fA-F]{64}$"
+                  description: >
+                    SHA-256 of the exact notice text presented, stored in the
+                    consent audit trail as evidence of what was shown.
+                domainGroupId:
+                  type: string
+                  description: >
+                    The domain group the embedded widget loaded for. Used to
+                    attribute the consent when the notice itself is org-wide
+                    (not scoped to a group); ignored when the notice is scoped,
+                    and dropped if it is not a group in this organization.
       responses:
         "201":
           description: Consent recorded.
@@ -600,8 +598,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/consents/anonymous/withdraw:
+    post:
+      operationId: withdrawConsentAnonymous
+      summary: Withdraw a guest's consent for one or more purposes.
+      description: >
+        Unauthenticated public write, authorised by possession of the
+        client-generated `anonymousId` that recorded the consent. Rate-limited.
+        Idempotent: purposes with no active consent are not counted. Notifies
+        connected processors, as an authenticated withdrawal does.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, anonymousId, purposes]
+              properties:
+                organizationId:
+                  type: string
+                anonymousId:
+                  type: string
+                  minLength: 1
+                purposes:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: string
+                    minLength: 1
+      responses:
+        "200":
+          description: Withdrawal processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [withdrawn, purposes, withdrawnAt]
+                properties:
+                  withdrawn:
+                    type: integer
+                  purposes:
+                    type: array
+                    items:
+                      type: string
+                  withdrawnAt:
+                    type: integer
+        "400":
+          description: Missing/invalid fields or rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/consents/{consentId}/withdrawal-acknowledgement:
+    post:
+      operationId: acknowledgeConsentWithdrawal
+      summary: >
+        Report that a connected processor acted on a `consent.withdrawn`
+        notification (research/2026-08-30-dpdp-research.md, §5-P1).
+      description: >
+        `processorNotificationLogs` (see `convex/webhooks.ts`) only ever
+        records whether the outbound `consent.withdrawn` webhook delivery
+        reached the processor, never whether the processor actually stopped
+        processing. A connected processor calls this endpoint to report what
+        it did, closing the loop the same way
+        `/api/v1/dsr/{requestId}/processor-confirmation` does for erasure
+        requests.
+      security:
+        - apiKey: []
+      parameters:
+        - $ref: "#/components/parameters/ConsentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [processorName, outcome]
+              properties:
+                processorName:
+                  type: string
+                  minLength: 1
+                outcome:
+                  type: string
+                  enum: [completed, partial, failed]
+                note:
+                  type: string
+      responses:
+        "201":
+          description: Acknowledgement recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: >
+            Missing/invalid fields, invalid consent id, or the consent has
+            not been withdrawn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
+          description: >
+            The consent does not belong to the calling key's
+            organization.
           content:
             application/json:
               schema:
@@ -659,12 +771,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
     get:
       operationId: listDsrRequestsForCurrentUser
       summary: List the caller's own DSR requests, with SLA `dueAt`.
@@ -685,12 +791,6 @@ paths:
                       $ref: "#/components/schemas/DsrRequest"
         "401":
           description: Missing, invalid, or expired access token.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
           content:
             application/json:
               schema:
@@ -748,12 +848,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
     get:
       operationId: listGrievancesForCurrentUser
       summary: List the caller's own grievances, with SLA `dueAt`.
@@ -778,12 +872,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/nomination:
     get:
       operationId: getNomination
@@ -801,12 +889,6 @@ paths:
                   - type: "null"
         "401":
           description: Missing, invalid, or expired access token.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
           content:
             application/json:
               schema:
@@ -852,12 +934,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
     delete:
       operationId: revokeNomination
       summary: Revoke the caller's successor nomination.
@@ -879,12 +955,6 @@ paths:
                     type: boolean
         "401":
           description: Missing, invalid, or expired access token.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
           content:
             application/json:
               schema:
@@ -934,12 +1004,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/retention/due:
     get:
       operationId: listDueRetentions
@@ -951,8 +1015,7 @@ paths:
         `scheduledErasures` rows whose window has already elapsed, so a
         fiduciary's server integration can trigger its own erasure
         automation instead of a human watching the dpdpbot dashboard.
-        Requires the `dpdp_retention_due_api_enabled` flag; while it is off,
-        this route behaves as if it doesn't exist (404). Write access to
+        Write access to
         retention policies and scheduled erasures stays dashboard-only
         (ADR-007 D3) — there is no corresponding write route.
       security:
@@ -989,12 +1052,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_retention_due_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/consent-status:
     get:
       operationId: getConsentStatus
@@ -1011,8 +1068,7 @@ paths:
         means the identifier is not yet a customer of record for this
         organization — distinct from "known, with no active consent", which
         is `found: true` and an empty or all-opted-out `purposes` array.
-        Requires the `dpdp_consent_status_lookup_enabled` flag; while it is
-        off, this route behaves as if it doesn't exist (404). Write access to
+        Write access to
         consent stays `POST`/`DELETE /cm/v1/consent` — there is no
         corresponding write route here (ADR-007 D3).
       security:
@@ -1057,6 +1113,20 @@ paths:
                         withdrawnAt:
                           type: number
                           description: Epoch ms this purpose was withdrawn, if any.
+                        standardPurpose:
+                          type: string
+                          enum:
+                            - dpdp_reserved.marketing
+                            - dpdp_reserved.transactional
+                            - dpdp_reserved.analytics
+                          description: >
+                            The reserved, platform-defined purpose this org's
+                            own `purposeKey` maps to
+                            (docs/specs/ecommerce-cms-plugins.md, §6), when a
+                            DPO has set one — so a plugin written once against
+                            e.g. `dpdp_reserved.marketing` works across every
+                            dpdpbot organization instead of string-matching a
+                            per-org label. Omitted when no mapping exists.
         "400":
           description: Missing `email` query parameter.
           content:
@@ -1069,8 +1139,265 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/dsr/{requestId}/processor-confirmation:
+    post:
+      operationId: recordDsrProcessorConfirmation
+      summary: >
+        Report what a connected processor actually did about an erasure
+        request (docs/specs/ecommerce-cms-plugins.md, §7).
+      description: >
+        `dsr.completed` (§2) tells a plugin an erasure was approved on
+        dpdpbot's side; store-side erasure is rarely total deletion (an order
+        record may be anonymized rather than deleted for tax/accounting
+        retention, or a downstream API call may fail). This is the inbound
+        record of what each connected system actually did, surfaced on the
+        DSR detail view so a DPO auditing an erasure can see more than
+        "dpdpbot marked this complete". Additive and read-mostly from
+        dpdpbot's perspective — it does not reopen or alter the DSR's own
+        status.
+      security:
+        - apiKey: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [processorName, outcome, details]
+              properties:
+                processorName:
+                  type: string
+                outcome:
+                  type: string
+                  enum: [completed, partial, failed]
+                details:
+                  type: array
+                  items:
+                    type: object
+                    required: [system, action]
+                    properties:
+                      system:
+                        type: string
+                      action:
+                        type: string
+                      note:
+                        type: string
+      responses:
+        "201":
+          description: Confirmation recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: >
+            Malformed request body, or the request id does not identify an
+            erasure request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "404":
-          description: The `dpdp_consent_status_lookup_enabled` flag is off.
+          description: >
+            The request id does not belong to the calling key's organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/withdrawals/{propagationId}/ack:
+    post:
+      operationId: acknowledgeWithdrawalPropagation
+      summary: >
+        Confirm that a consent withdrawal took effect at this destination
+        (research/2026-08-30-dpdp-research.md, §5-P1).
+      description: >
+        The public half of the withdrawal-propagation acknowledgement
+        ledger: `suppressionList` proves a withdrawal was *registered*, and
+        this closes the loop the same way
+        `/api/v1/dsr/{requestId}/processor-confirmation` does for erasure
+        requests — a downstream destination reports for itself that it
+        actually stopped processing, rather than a DPO taking dpdpbot's word
+        for it. Idempotent: acknowledging an already-acknowledged row
+        succeeds without changing its `acknowledgedAt`, because a retried
+        confirmation must never fail.
+      security:
+        - apiKey: []
+      parameters:
+        - name: propagationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Acknowledged (or already was).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >
+            The propagation id does not belong to the calling key's
+            organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/withdrawals/{suppressionId}/propagations:
+    get:
+      operationId: getWithdrawalPropagationStatus
+      summary: >
+        Poll "N of M systems confirmed" for a withdrawal
+        (research/2026-08-30-dpdp-research.md, §5-P1, §6.2).
+      description: >
+        The read-side counterpart to
+        `/api/v1/consents/{consentId}/withdrawal-acknowledgement`: lets a
+        connected plugin poll how many downstream destinations have
+        confirmed a withdrawal it caused, the same way
+        `/api/v1/suppression-list` lets it poll the suppression list itself,
+        rather than requiring a DPO to check the console.
+      security:
+        - apiKey: []
+      parameters:
+        - name: suppressionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The suppression's fan-out status across destinations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, acknowledged, failed, entries]
+                properties:
+                  total:
+                    type: number
+                  acknowledged:
+                    type: number
+                  failed:
+                    type: number
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [destinationLabel, status, dispatchedAt]
+                      properties:
+                        destinationLabel:
+                          type: string
+                        status:
+                          type: string
+                          enum: [pending, acknowledged, overdue, failed]
+                        dispatchedAt:
+                          type: number
+                        acknowledgedAt:
+                          type: number
+                        failedAt:
+                          type: number
+                        failureReason:
+                          type: string
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: >
+            The suppression entry does not belong to the calling
+            key's organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/suppression-list:
+    get:
+      operationId: listSuppressionList
+      summary: >
+        Incrementally pull identifiers to stop marketing to
+        (docs/specs/ecommerce-cms-plugins.md, §5).
+      description: >
+        Read-only, cursor-by-`suppressedAt`: the reconciliation half of the
+        webhook + poll pattern — a plugin's fallback sweep for when a
+        `consent.withdrawn` webhook delivery failed, since delivery is
+        at-least-once-attempted but not guaranteed. Populated whenever a
+        withdrawing consent's principal has a known email; an
+        anonymous/guest consent has nothing to suppress. Write access is
+        withdrawal/erasure-triggered only — there is no manual write route.
+      security:
+        - apiKey: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: number
+            default: 0
+          description: >
+            Epoch ms; only entries suppressed strictly after this are
+            returned. Omit (or pass 0) to pull the full list.
+      responses:
+        "200":
+          description: The calling key's organization's suppression-list entries after `since`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, nextCursor]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [identifier, identifierType, reason, suppressedAt]
+                      properties:
+                        identifier:
+                          type: string
+                        identifierType:
+                          type: string
+                          enum: [email, phone]
+                        reason:
+                          type: string
+                          enum: [consent_withdrawal, dsr_erasure, manual]
+                        suppressedAt:
+                          type: number
+                        liftedAt:
+                          type: number
+                  nextCursor:
+                    type: [number, "null"]
+                    description: >
+                      Pass as the next call's `since` to continue the pull;
+                      `null` means the response was not truncated.
+        "401":
+          description: Missing or invalid API key.
           content:
             application/json:
               schema:
@@ -1086,9 +1413,8 @@ paths:
         fiduciary's server integration can trigger its own containment-erasure
         automation off a reported breach instead of a human watching the
         dpdpbot dashboard. Simulated breaches from the Breach Drill Simulator
-        are excluded. Requires the `dpdp_breach_register_api_enabled` flag;
-        while it is off, this route behaves as if it doesn't exist (404).
-        Write access to the breach register stays dashboard-only (ADR-007
+        are excluded. Write access to the breach register stays
+        dashboard-only (ADR-007
         D3) — there is no corresponding write route.
       security:
         - apiKey: []
@@ -1137,8 +1463,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/consent-portability/exports/{exportId}/manifest:
+    get:
+      operationId: getConsentPortabilityManifest
+      summary: >
+        Read a signed consent-portability export's manifest
+        (research/2026-09-27-dpdp-research.md, Idea P0 "you can leave with
+        your evidence").
+      description: >
+        The certificate, not the cargo: schema version, scope, record
+        counters, the running SHA-256 digest folded over every exported
+        record, and its platform HMAC signature — never the record payloads
+        themselves (those stay on the in-console `pageExportRecords` query,
+        unreachable from this surface). Lets a fiduciary's own server
+        integration, or the receiving party on a change of Consent Manager
+        (Indian Bank RFP GEM/2026/B/7823086 §1.6.1(e)), fetch a signed
+        manifest without a human in a browser. Authenticated with the same
+        org-scoped API key as `/api/v1/breaches`.
+      security:
+        - apiKey: []
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The export's signed manifest.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - exportId
+                  - organizationId
+                  - schemaVersion
+                  - status
+                  - reason
+                  - scopeFromMs
+                  - scopeToMs
+                  - consentRecordCount
+                properties:
+                  exportId:
+                    type: string
+                  organizationId:
+                    type: string
+                  schemaVersion:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, building, complete, failed]
+                  reason:
+                    type: string
+                    enum:
+                      - consent_manager_change
+                      - solution_replacement
+                      - regulatory_portability
+                      - routine_drill
+                  scopeFromMs:
+                    type: number
+                  scopeToMs:
+                    type: number
+                  consentRecordCount:
+                    type: number
+                  runningDigest:
+                    type: string
+                  manifestSignature:
+                    type: string
+                  manifestSignatureKeyId:
+                    type: string
+                  completedAt:
+                    type: number
+                  verificationRecipe:
+                    type: string
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "404":
-          description: The `dpdp_breach_register_api_enabled` flag is off.
+          description: >
+            The export does not exist or belongs to a different organization.
           content:
             application/json:
               schema:
@@ -1163,13 +1570,9 @@ paths:
         calling key's org.
 
         Withdrawal itself stays `DELETE /cm/v1/consent/{consentId}`'s job —
-        this route never mutates the consent record. It may append an
-        immutable decision row to the org's Consent Gate audit log when
-        `dpdp_consent_gate_decision_audit_enabled` is on; that log is read
-        from the dashboard, not from this API.
-
-        Requires the `dpdp_consent_gate_api_enabled` flag; while it is off,
-        this route behaves as if it doesn't exist (404).
+        this route never mutates the consent record. It appends an
+        immutable decision row to the org's Consent Gate audit log; that log
+        is read from the dashboard, not from this API.
       security:
         - apiKey: []
       requestBody:
@@ -1224,8 +1627,7 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: >
-            The `dpdp_consent_gate_api_enabled` flag is off, or the consent
-            does not exist or belongs to another organization.
+            The consent does not exist or belongs to another organization.
           content:
             application/json:
               schema:
@@ -1248,12 +1650,8 @@ paths:
         what it was told. The log is append-only: `verifyForApiKey` is the
         only writer and there is no corresponding write route (ADR-007 D3).
 
-        Requires the `dpdp_consent_gate_audit_api_enabled` flag; while it is
-        off, this route behaves as if it doesn't exist (404). That flag is
-        *transport* only and is not a way around
-        `dpdp_consent_gate_decision_audit_enabled`, which gates the
-        recording itself — while that flag is off nothing is written, so
-        this route returns an empty `decisions` array rather than an error.
+        Returns an empty `decisions` array rather than an error when nothing
+        has been recorded.
       security:
         - apiKey: []
       parameters:
@@ -1294,12 +1692,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_consent_gate_audit_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/consent/gate/alerts:
     get:
       operationId: listConsentGateBypassAlerts
@@ -1322,13 +1714,9 @@ paths:
         as `/api/v1/consent/verify` (ADR-004 D2). Derived entirely from the
         decision log — it stores nothing of its own and mutates nothing.
 
-        Requires the `dpdp_consent_gate_audit_api_enabled` flag; while it is
-        off, this route behaves as if it doesn't exist (404). That flag is
-        *transport* only and is not a way around
-        `dpdp_consent_gate_bypass_alerts_enabled`, which gates the detection
-        itself — while that flag is off this route returns an empty `alerts`
-        array (with `windowMs`/`denyThreshold` still populated) rather than
-        an error.
+        Returns an empty `alerts` array (with `windowMs`/`denyThreshold`
+        still populated) rather than an error when no bypass pattern is
+        detected.
       security:
         - apiKey: []
       responses:
@@ -1362,12 +1750,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_consent_gate_audit_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/cross-border/transfers:
     get:
       operationId: listCrossBorderTransfers
@@ -1379,9 +1761,8 @@ paths:
         entries declared as crossing borders (s.16), so a fiduciary's server
         integration can act on that register programmatically instead of a
         human reading it off the RoPA Builder dashboard. Archived activities
-        are excluded. Requires the `dpdp_cross_border_transfers_api_enabled`
-        flag; while it is off, this route behaves as if it doesn't exist
-        (404). Write access to the RoPA stays dashboard-only (ADR-007 D3) —
+        are excluded. Write access to the RoPA stays dashboard-only
+        (ADR-007 D3) —
         there is no corresponding write route.
       security:
         - apiKey: []
@@ -1437,8 +1818,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /api/v1/discovery/manifest:
+    post:
+      operationId: ingestDiscoveryManifest
+      summary: >
+        Ingest a column manifest for a data discovery source
+        (research/2026-09-06-dpdp-research.md, §5-P0).
+      description: >
+        The connector half of Data Discovery & Classification. Run a
+        read-only `information_schema` (or equivalent) query against your own
+        database replica, inside your own network, and POST the resulting
+        column list here on whatever schedule you choose. The platform never
+        holds your database credentials — nothing here is a connection
+        string, and there is nothing for an attacker who breaches this
+        platform to steal but a schema you can already see in the console.
+
+        Each column is classified against the India-specific personal-data
+        taxonomy (Aadhaar, PAN, IFSC, UPI VPA, Voter ID, ABHA, guardian
+        indicators) and reconciled against what is already on file: a column
+        already known is re-classified in place, keeping any review recorded
+        against it, rather than duplicated. A nightly run keeps the source
+        inside its 90-day re-scan horizon without anyone opening a browser.
+
+        `sampleValues` is accepted only for a source whose owner has
+        explicitly opted it in from the console. Values are matched against
+        the patterns above and discarded inside the request; nothing stores
+        them. Sending them for a source that has not opted in is a 400, not a
+        silent drop.
+
+        Listing a table in `reconcileTablePaths` asserts that this manifest
+        describes it in full: any column on file under it and absent here is
+        marked as dropped from your schema and stops counting toward your
+        coverage gaps (it stays readable, because an evidence bundle may
+        already attest to it). A table named there but carrying no column in
+        `columns` is a 400 — otherwise one mis-pasted manifest would retire an
+        entire inventory.
+
+        Writes are narrow by design: this route can add to and reclassify one
+        source's columns and retire columns in tables you reconcile. Creating
+        or archiving a source, reviewing a field, and changing the
+        sample-value opt-in all stay decisions someone makes in the console,
+        signed in as themselves.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, columns]
+              properties:
+                sourceId:
+                  type: string
+                  description: >
+                    The discovery source to ingest into, as shown in the
+                    console. Must belong to the calling key's organization
+                    and must not be archived.
+                columns:
+                  type: array
+                  items:
+                    type: object
+                    required: [tablePath, columnName]
+                    properties:
+                      tablePath:
+                        type: string
+                        description: e.g. `public.customers`.
+                      columnName:
+                        type: string
+                      declaredType:
+                        type: string
+                        description: The database's own type, e.g. `varchar`.
+                      sampleValues:
+                        type: array
+                        maxItems: 20
+                        items:
+                          type: string
+                        description: >
+                          Opt-in only, and never stored. See the description
+                          above before sending these.
+                reconcileTablePaths:
+                  type: array
+                  items:
+                    type: string
+                  description: >
+                    Tables this manifest describes in full. Columns on file
+                    under them and absent here are retired.
+      responses:
+        "200":
+          description: What the ingestion classified, added, updated and retired.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  [fieldsClassified, fieldsNew, fieldsUpdated, fieldsRetired]
+                properties:
+                  fieldsClassified:
+                    type: number
+                  fieldsNew:
+                    type: number
+                  fieldsUpdated:
+                    type: number
+                  fieldsRetired:
+                    type: number
+        "400":
+          description: >
+            Malformed body, a manifest over the per-call column limit, sample
+            values for a source that has not opted in, or a reconciled table
+            the manifest does not describe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing or invalid API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "404":
-          description: The `dpdp_cross_border_transfers_api_enabled` flag is off.
+          description: >
+            No such source for the calling key's organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The source is archived.
           content:
             application/json:
               schema:
@@ -1457,10 +1964,7 @@ paths:
         React admin page. The returned `token` resolves at
         `/offline-consent/{token}` on the fiduciary's own dpdpbot app
         origin — turn that URL into a QR code for a branch counter, agent
-        desk, or POS terminal. Requires the
-        `dpdp_offline_consent_link_api_enabled` flag; while it is off, this
-        route behaves as if it doesn't exist (404). The link is only
-        redeemable once `dpdp_offline_consent_bridge_enabled` is also on.
+        desk, or POS terminal.
       security:
         - apiKey: []
       requestBody:
@@ -1492,9 +1996,7 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: >
-            Notice not found (or belongs to a different organization). Also
-            returned for every request while the
-            `dpdp_offline_consent_link_api_enabled` flag is off.
+            Notice not found (or belongs to a different organization).
           content:
             application/json:
               schema:
@@ -1527,8 +2029,7 @@ paths:
         that already committed returns the original per-session results and
         writes nothing. A session that fails verification is *quarantined*
         with a reason and retained as evidence, never silently dropped and
-        never silently accepted. Requires the
-        `dpdp_offline_agent_capture_enabled` flag; 404s while it is off.
+        never silently accepted.
       security:
         - apiKey: []
       requestBody:
@@ -1572,12 +2073,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_offline_agent_capture_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
         "429":
           description: Per-API-key rate limit exceeded.
           content:
@@ -1602,7 +2097,6 @@ paths:
         strength of a raised request. Unanswered requests expire after 72
         hours into the fiduciary's DPO queue. The submitted `phone` is HMAC'd
         per-organization before storage and is never persisted in the clear.
-        Requires the `dpdp_offline_async_consent_enabled` flag.
       security:
         - apiKey: []
       requestBody:
@@ -1659,8 +2153,7 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: >
-            Notice not found, or the `dpdp_offline_async_consent_enabled` flag
-            is off.
+            Notice not found.
           content:
             application/json:
               schema:
@@ -1691,7 +2184,6 @@ paths:
         refusal is retained as evidence rather than discarded.
         `partnerSignature` is stored verbatim as an assertion of origin —
         dpdpbot cannot verify a key it does not hold and does not claim to.
-        Requires the `dpdp_offline_async_consent_enabled` flag.
       security:
         - apiKey: []
       requestBody:
@@ -1731,8 +2223,81 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: >
-            Notice not found, or the `dpdp_offline_async_consent_enabled` flag
-            is off.
+            Notice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Per-API-key rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/offline/sms-withdraw:
+    post:
+      operationId: smsWhatsappWithdraw
+      summary: >
+        SMS/WhatsApp reply-keyword consent withdrawal
+        (docs/specs/offline-consent-capture.md §5).
+      description: >
+        A fiduciary points their SMS/WhatsApp gateway's inbound webhook at
+        this URL; every inbound reply is posted here, and only ones matching
+        a withdrawal keyword (`stop`, `unsubscribe`, `withdraw`, `revoke`,
+        `cancel`, matched case-insensitively against the whole trimmed
+        message) act.
+
+
+        Always returns `200` on a well-formed, authenticated request —
+        including "no keyword matched" and "no receipt found for this
+        number" — because the caller is a gateway relaying arbitrary inbound
+        text, not a client that can act on a 4xx. `matched`/`withdrawn` in
+        the response let an integration log the outcome without needing a
+        status-code-as-enum.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, message]
+              properties:
+                phone:
+                  type: string
+                  description: >
+                    Raw number as the gateway received it; normalised and
+                    HMAC'd per-organization before lookup. Never stored in
+                    the clear.
+                message:
+                  type: string
+                  description: The inbound reply text, verbatim.
+      responses:
+        "200":
+          description: Request processed (regardless of whether a keyword matched).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, withdrawn]
+                properties:
+                  matched:
+                    type: boolean
+                    description: Whether the message matched a withdrawal keyword.
+                  withdrawn:
+                    type: boolean
+                    description: >
+                      Whether at least one receipt for this phone number was
+                      withdrawn as a result.
+        "400":
+          description: Malformed body, or the phone number contains no digits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Missing, invalid, or revoked API key.
           content:
             application/json:
               schema:
@@ -1784,12 +2349,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/staff/dsr/statutory-basis-suggestions:
     get:
       operationId: staffListStatutoryBasisSuggestions
@@ -1804,7 +2363,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Suggestions (empty if the feature flag is off).
+          description: Suggestions.
           content:
             application/json:
               schema:
@@ -1817,12 +2376,6 @@ paths:
                       type: object
         "401":
           description: Not authenticated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
           content:
             application/json:
               schema:
@@ -1914,7 +2467,6 @@ paths:
     post:
       operationId: staffRejectDsrWithStatutoryBasis
       summary: Deny an erasure request on a documented statutory basis.
-      description: Requires the `dpdp_dsr_statutory_denial_enabled` flag.
       security:
         - staffToken: []
       parameters:
@@ -1950,7 +2502,7 @@ paths:
                     type: boolean
         "400":
           description: >
-            Missing fields, flag off, wrong request type, invalid
+            Missing fields, wrong request type, invalid
             transition, or the caller isn't staff at that org.
           content:
             application/json:
@@ -1999,12 +2551,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
-        "404":
-          description: The `dpdp_mobile_api_enabled` flag is off.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiError"
   /api/v1/staff/grievances/{grievanceId}/respond:
     post:
       operationId: staffRespondToGrievance
@@ -2049,6 +2595,186 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/observatory/observations:
+    post:
+      operationId: ingestObservatoryObservations
+      summary: >
+        Ingest a batch of Consent Observatory observations
+        (docs/specs/consent-observatory-extension.md §7).
+      description: >
+        Unauthenticated by design — requiring an account would collapse
+        contribution rates and would force linking a browsing-derived
+        observation to an identity. Anti-abuse (quorum before publication,
+        outlier rejection) happens downstream of ingest, not here; rate
+        limiting is enforced at the edge, not by this route. Every
+        observation is processed independently, so **partial success is
+        normal**: one malformed observation never fails the batch. `domain`
+        is re-normalized server-side (lowercased, scheme/port/userinfo
+        stripped, reduced toward eTLD+1) — the client's own normalization is
+        never trusted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [batch]
+              properties:
+                batch:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    $ref: "#/components/schemas/ObservatoryObservation"
+      responses:
+        "202":
+          description: >
+            Per-observation results. A 202 does **not** mean every
+            observation was accepted — inspect `rejected`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted, rejected]
+                properties:
+                  accepted:
+                    type: integer
+                  rejected:
+                    type: array
+                    items:
+                      type: object
+                      required: [index, reason]
+                      properties:
+                        index:
+                          type: integer
+                        reason:
+                          type: string
+        "400":
+          description: Malformed body, missing `batch`, or an empty batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "413":
+          description: More than 50 observations, or the body exceeds 256KB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/observatory/domains/{domain}:
+    get:
+      operationId: getObservatoryDomainVerdict
+      summary: >
+        Read a domain's published Consent Observatory verdict
+        (docs/specs/consent-observatory-extension.md §7).
+      description: >
+        Unauthenticated public read, so the browser extension (and any
+        third party) can show a registry grade without shipping a Convex
+        client. Returns only a verdict whose `publicationState` is
+        `"published"` — every other state, and any domain with no verdict
+        at all, is a `404`, never a redacted body, so an unpublished
+        verdict's existence is not itself observable from outside. `domain`
+        is re-normalized server-side (lowercased, scheme/path stripped,
+        reduced toward eTLD+1) the same way ingest normalizes it.
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The domain to look up, e.g. `example.com`.
+      responses:
+        "200":
+          description: The domain's published verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservatoryDomainVerdict"
+        "404":
+          description: >
+            No published verdict for this domain, or the `domain` path
+            segment is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/observatory/sectors/{sector}:
+    get:
+      operationId: getObservatorySectorReport
+      summary: >
+        Download the aggregate-only sector report
+        (docs/specs/consent-observatory-extension.md §12).
+      description: >
+        Unauthenticated public read of a CSV: cohort size, average score,
+        and grade distribution for one closed-enum sector, aggregated only
+        over `publicationState: "published"` verdicts on the current rubric
+        version — never per-domain rows ("Open data (decided, OQ 8):
+        aggregates only"). 404s for a `sector` outside the closed enum.
+      parameters:
+        - name: sector
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              [ecommerce, bfsi, healthtech, edtech, travel, media, gov_adjacent]
+      responses:
+        "200":
+          description: >
+            CSV with header `sector,cohortSize,averageScore,grade,count` —
+            one row per grade in the sector's distribution.
+          content:
+            text/csv:
+              schema:
+                type: string
+        "404":
+          description: "`sector` is not a recognized sector."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/observatory/contributions/{contributorHash}:
+    delete:
+      operationId: deleteObservatoryContributions
+      summary: >
+        "Delete my contributions" (docs/specs/consent-observatory-extension.md
+        §18).
+      description: >
+        Unauthenticated, same reasoning as ingest — the only identity
+        available is the rotating, salted `contributorHash` itself,
+        never a user or organization id (§9.2). Deletes every
+        `siteObservations` row for that hash. Always responds
+        `{ "deleted": true }`, including for a hash with no observations —
+        deletion is idempotent, and distinguishing "nothing to delete" from
+        "deleted" would let a caller probe whether a given hash ever
+        contributed anything. `contributorHash` rotates monthly with the
+        salt (§9.2), so this only reaches what the current salt epoch can
+        still link to one installation; after rotation, the data is no
+        longer linkable to it. Ships ungated.
+      parameters:
+        - name: contributorHash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The extension-local, salted contributor hash to erase.
+      responses:
+        "200":
+          description: Every observation for this hash has been deleted (or there were none).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        "404":
+          description: The `contributorHash` path segment is missing or malformed.
           content:
             application/json:
               schema:
@@ -2237,12 +2963,29 @@ components:
         bannerSettings:
           type: object
           description: Present only if the domain group has customized banner styling.
+        portalUrl:
+          type: [string, "null"]
+          description: Absolute URL of the org's data-principal portal, or null.
+        noticeVersion:
+          type: integer
+          description: >
+            Version of the notice being presented; the widget stores it with
+            the visitor's decision and re-prompts when it changes.
+        noticeSourceLanguage:
+          type: string
+        grievanceContact:
+          type: [object, "null"]
+          description: The grievance contact the notice must name, or null.
+          properties:
+            name:
+              type: string
+            email:
+              type: string
     ConsentGateDecision:
       type: object
       description: >
         One immutable row of the Consent Gate decision audit log, written by
-        `POST /api/v1/consent/verify` while
-        `dpdp_consent_gate_decision_audit_enabled` is on.
+        `POST /api/v1/consent/verify`.
       required:
         - decisionId
         - consentId
@@ -2629,3 +3372,149 @@ components:
           description: >
             Free-text message. Not yet a stable machine-readable code — see
             the "Known gap" note in the top-level description.
+    ObservatoryObservation:
+      type: object
+      description: >
+        One (domain, pageType, phase) snapshot
+        (docs/specs/consent-observatory-extension.md §2.2, §4.1). Trimmed
+        from the spec's full shape — no `pathHash`, `fpApiCalls`,
+        `buttonGraph`, or `discoveredLinks` yet; this endpoint ships ingest
+        and storage only, not rubric evaluation.
+      required:
+        - domain
+        - pageType
+        - phase
+        - source
+        - observedAt
+        - rulesetVersion
+      properties:
+        domain:
+          type: string
+          description: >
+            Re-normalized server-side on receipt — do not rely on this being
+            echoed back verbatim.
+        pageType:
+          type: string
+          enum:
+            [
+              home,
+              listing,
+              product,
+              article,
+              auth,
+              checkout,
+              account,
+              form,
+              policy,
+              other,
+            ]
+        phase:
+          type: string
+          enum: [pre_interaction, post_accept, post_reject, no_action]
+        source:
+          type: string
+          enum: [extension, probe, seed_crawl]
+        observedAt:
+          type: number
+          description: Epoch milliseconds.
+        rulesetVersion:
+          type: string
+        contributorHash:
+          type: string
+          description: >
+            Rotating, salted hash of an extension-local install id. Absent
+            for `source: probe`.
+        cookies:
+          type: array
+          items:
+            type: object
+            required: [name, party, expiryClass]
+            properties:
+              name:
+                type: string
+              party:
+                type: string
+                enum: [first, third]
+              expiryClass:
+                type: string
+                enum: [session, lt_24h, lt_30d, lt_13mo, gt_13mo]
+        storageKeys:
+          type: array
+          items:
+            type: string
+        requestHosts:
+          type: array
+          items:
+            type: string
+        cmp:
+          type: string
+        bannerFingerprint:
+          type: string
+    ObservatoryDomainVerdict:
+      type: object
+      description: >
+        A published Consent Observatory verdict
+        (docs/specs/consent-observatory-extension.md §4.3, §7). Never
+        includes `publicationState`, `noticeSentAt`,
+        `claimedByOrganizationId`, or `sector` — those are internal-only
+        fields on `siteVerdicts`; a `200` from this endpoint is only ever
+        returned for a `"published"` row in the first place.
+      required:
+        - domain
+        - rubricVersion
+        - score
+        - grade
+        - checkResults
+        - computedAt
+        - staleAfter
+      properties:
+        domain:
+          type: string
+        rubricVersion:
+          type: string
+        score:
+          type: number
+          description: 0..100, excluding advisory checks.
+        grade:
+          type: string
+          enum: [A, B, C, D, E, insufficient_data]
+        checkResults:
+          type: array
+          items:
+            type: object
+            required: [checkKey, status, weight, confidence]
+            properties:
+              checkKey:
+                type: string
+              status:
+                type: string
+                enum: [pass, fail, insufficient_data]
+              weight:
+                type: number
+              confidence:
+                type: number
+        computedAt:
+          type: number
+          description: Epoch milliseconds.
+        staleAfter:
+          type: number
+          description: Epoch milliseconds; past this the verdict is due a recompute.
+        reciprocalBadge:
+          type:
+            - object
+            - "null"
+          description: >
+            Whether this domain itself runs dpdpbot's own consent banner
+            (docs/specs/consent-observatory-extension.md §14, "Reciprocal
+            loop"). Always populated, with `verified: false` when it does
+            not; the type stays nullable for backward compatibility.
+          properties:
+            verified:
+              type: boolean
+            verifiedAt:
+              type:
+                - number
+                - "null"
+              description: >
+                Epoch milliseconds of the most recent observation reporting
+                dpdpbot's own CMP, or null when `verified` is false.

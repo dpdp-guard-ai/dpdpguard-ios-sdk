@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-05
+
+### Changed
+
+- Re-vendored `contract/` from `@dpdpguard/contract` 1.6.0 to 1.9.0
+  (OpenAPI `2.23.1`) via the same files `scripts/update-contract.sh` copies.
+  The generated client picks up the new endpoints and optional fields; the
+  error catalog and audit-hash vectors are unchanged. All intervening
+  contract releases are additive.
+
 ## [1.3.0] - 2026-08-24
 
 ### Added
